@@ -15,8 +15,11 @@ import web_app  # noqa: E402
 def main() -> int:
     payload = json.loads((ROOT / "samples/demo_mistake.json").read_text(encoding="utf-8"))
     with web_app.connect_db() as conn:
-        candidates = web_app.duplicate_candidates(conn, payload)
-        if candidates:
+        existing = conn.execute(
+            "SELECT id FROM mistake_cards WHERE subject = ? AND question_text = ? LIMIT 1",
+            (payload["subject"], payload["question_text"]),
+        ).fetchone()
+        if existing:
             print("Demo record already exists; nothing changed.")
             return 0
         card = web_app.save_card(conn, payload)
