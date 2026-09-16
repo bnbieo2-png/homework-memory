@@ -1,0 +1,39 @@
+{
+  "user_id": "student-default",
+  "subject": "英语",
+  "unit": "一般过去时",
+  "topic": "改错题",
+  "question_type": "填空题",
+  "knowledge_points": [
+    "一般过去时",
+    "动词过去式"
+  ],
+  "grammar_errors": [
+    "时态错误",
+    "动词形式错误"
+  ],
+  "misspelled_words": [
+    {
+      "wrong": "wented",
+      "correct": "went"
+    },
+    {
+      "wrong": "studing",
+      "correct": "studying"
+    }
+  ],
+  "wrong_reason": "把过去式和现在分词都写错了",
+  "explanation_summary": "一般过去时要用过去式，study 变成 studying 时保留 y，直接加 ing。",
+  "correct_answer": "went, studying",
+  "user_answer": "wented, studing",
+  "image_path": "/tmp/sample-homework-2.jpg",
+  "tags": [
+    "英语",
+    "时态",
+    "拼写"
+  ],
+  "source": {
+    "channel": "telegram",
+    "session": "homework-demo"
+  }
+}

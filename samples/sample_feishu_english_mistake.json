@@ -1,0 +1,38 @@
+{
+  "user_id": "student-default",
+  "subject": "英语",
+  "unit": "一般过去时",
+  "topic": "单词拼写",
+  "question_type": "改错题",
+  "knowledge_points": [
+    "一般过去时",
+    "规则动词"
+  ],
+  "grammar_errors": [
+    "动词形式错误"
+  ],
+  "misspelled_words": [
+    {
+      "wrong": "planed",
+      "correct": "planned"
+    },
+    {
+      "wrong": "stoped",
+      "correct": "stopped"
+    }
+  ],
+  "wrong_reason": "双写规则没记牢，过去式拼写反复出错。",
+  "explanation_summary": "重读闭音节结尾的动词，变过去式时通常要先双写末尾辅音再加 ed。",
+  "correct_answer": "planned, stopped",
+  "user_answer": "planed, stoped",
+  "image_path": "/tmp/sample-homework-feishu-1.jpg",
+  "tags": [
+    "英语",
+    "拼写",
+    "过去式"
+  ],
+  "source": {
+    "channel": "feishu",
+    "session": "homework-feishu-demo"
+  }
+}

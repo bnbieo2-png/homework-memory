@@ -1,0 +1,25 @@
+{
+  "user_id": "student-default",
+  "subject": "数学",
+  "unit": "函数",
+  "topic": "一次函数图像",
+  "question_type": "选择题",
+  "knowledge_points": [
+    "一次函数",
+    "图像判断"
+  ],
+  "wrong_reason": "把斜率和截距的含义弄反了",
+  "explanation_summary": "判断函数图像时，先看斜率正负，再看与 y 轴交点位置。",
+  "correct_answer": "B",
+  "user_answer": "D",
+  "image_path": "/tmp/sample-homework-1.jpg",
+  "tags": [
+    "函数",
+    "图像",
+    "易错"
+  ],
+  "source": {
+    "channel": "telegram",
+    "session": "homework-demo"
+  }
+}
