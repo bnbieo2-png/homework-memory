@@ -1,0 +1,17 @@
+{
+  "subject": "数学",
+  "unit": "分数",
+  "topic": "分数加法",
+  "question_type": "计算题",
+  "question_text": "计算：1/3 + 1/6 = ?",
+  "knowledge_points": ["通分"],
+  "wrong_reason": "忘记先通分",
+  "explanation_summary": "分母不同的分数相加要先通分。",
+  "correct_answer": "1/2",
+  "user_answer": "2/9",
+  "tags": ["虚构示例"],
+  "source": {
+    "channel": "local",
+    "session": "demo"
+  }
+}
