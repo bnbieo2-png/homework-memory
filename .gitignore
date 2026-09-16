@@ -30,3 +30,7 @@ htmlcov/
 /*-mobile.png
 /*-tablet.png
 .gstack/
+
+# Local privacy-review marker lists must never be published.
+.privacy-markers*
+privacy-markers.local*

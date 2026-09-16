@@ -18,10 +18,10 @@ A privacy-first, self-hosted notebook for recording homework mistakes, reviewing
 ## 隐私原则
 
 - 默认只监听 `127.0.0.1`，其他设备无法直接访问。
-- 数据写入本机 `data/`，该目录已被排除，不会进入公开项目。
+- 数据写入本机 `data/`，Git 默认忽略该目录；发布时仍需核对文件，不能强制添加私人数据。
 - 邮件、飞书导入和 AI 生成功能都不是必需项。
 - AI 生成功能默认关闭；开启后，题目文字和相关学习记录可能发送给你配置的 AI 服务。
-- 项目不包含统计跟踪、广告或远程数据收集。
+- Web 应用没有内置统计跟踪或广告；可选 AI、邮件和第三方记忆组件有各自的数据流，应在启用前检查配置及其隐私政策。
 
 公开自己的修改前，请先阅读 [PRIVACY.md](PRIVACY.md)，再运行隐私检查。
 
@@ -96,10 +96,15 @@ python feishu_mistake_sync.py
 
 ```bash
 python scripts/privacy_audit.py
-python -m unittest -v test_homework_system.py test_public_release.py
+python scripts/privacy_audit.py --history
+python -m unittest -v test_homework_system.py test_public_release.py test_privacy_audit.py test_privacy_runtime.py
 ```
 
-两个命令都通过后，再检查准备上传的文件列表。不要上传 `data/`、`.env`、照片、数据库、日志、PDF 或邮件文件。
+历史检查需要在 Git 仓库内运行；纯下载目录没有历史时会报错。全部通过后，再检查准备上传的文件列表。不要上传 `data/`、`.env`、照片、数据库、日志、PDF 或邮件文件。扫描只能覆盖已知模式，不能代替人工审核。
+
+个人专用敏感词名单可通过 `HOMEWORK_PRIVACY_MARKERS_FILE` 指向仓库外的 UTF-8 文件（一行一项）。不要把自己的姓名、家庭称呼、服务器地址等写进公开扫描脚本，转义或拼接也不能保护这些信息。
+
+提交前启用 GitHub 邮箱隐私，并将此仓库的 `git config user.email` 设置为 GitHub 邮箱设置页提供的匿名地址。已有提交中的私人信息需要清理完整历史；只修改最新版不会移除历史内容。
 
 ## 开源许可
 

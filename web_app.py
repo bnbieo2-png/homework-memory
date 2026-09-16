@@ -9,7 +9,6 @@ import hmac
 import html
 import io
 import json
-import mimetypes
 import os
 import re
 import secrets
@@ -18,6 +17,7 @@ import socket
 import sqlite3
 import smtplib
 import ssl
+import stat
 import struct
 import subprocess
 import tempfile
@@ -681,12 +681,11 @@ def row_to_card(row: sqlite3.Row) -> dict:
     record_type = row["record_type"] or "mistake"
     answer_status = str(row["answer_status"] or ("correct" if record_type == "correct" else "incorrect"))
     image_path = str(row["image_path"] or "").strip()
-    image_file = Path(image_path).expanduser() if image_path else None
-    image_available = bool(
-        image_file
-        and image_file.is_file()
-        and image_file.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".gif"}
-    )
+    try:
+        read_allowed_image(image_path)
+        image_available = True
+    except (OSError, ValueError):
+        image_available = False
     learning_eligible = bool(
         record_type != "correct"
         and subject != "待整理"
@@ -2162,17 +2161,79 @@ def esc(value: str) -> str:
     return html.escape(str(value)).replace("\n", "<br>")
 
 
-def card_image_file(conn: sqlite3.Connection, card_id: str) -> tuple[Path, str]:
+MAX_IMAGE_BYTES = 20 * 1024 * 1024
+IMAGE_DIRECTORIES = {"source-images", "question-images", "images"}
+
+
+def image_content_type(payload: bytes) -> str:
+    # Recognize raster signatures only; never serve active SVG/HTML or trust a suffix.
+    if (len(payload) >= 33 and payload.startswith(b"\x89PNG\r\n\x1a\n")
+            and payload[8:16] == b"\x00\x00\x00\rIHDR"
+            and all(struct.unpack(">II", payload[16:24]))
+            and payload.endswith(b"IEND\xaeB`\x82")):
+        return "image/png"
+    if len(payload) >= 12 and payload[:3] == b"\xff\xd8\xff" and payload[-2:] == b"\xff\xd9":
+        return "image/jpeg"
+    if (len(payload) >= 14 and payload[:6] in (b"GIF87a", b"GIF89a")
+            and all(struct.unpack("<HH", payload[6:10])) and payload[-1:] == b";"):
+        return "image/gif"
+    if (len(payload) >= 20 and payload[:4] == b"RIFF" and payload[8:12] == b"WEBP"
+            and payload[12:16] in (b"VP8 ", b"VP8L", b"VP8X")
+            and int.from_bytes(payload[4:8], "little") + 8 == len(payload)):
+        return "image/webp"
+    raise ValueError("原图不是支持的 PNG、JPEG、GIF 或 WebP 图片")
+
+
+def read_allowed_image(value: str) -> tuple[bytes, str]:
+    """Read only regular files below dedicated data image folders, without symlinks."""
+    if not value:
+        raise ValueError("这道题没有原图")
+    if (not all(hasattr(os, flag) for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK"))
+            or os.open not in os.supports_dir_fd):
+        raise ValueError("当前平台不支持安全图片读取，请使用 macOS 或 Linux")
+    root = DATA_DIR.resolve()
+    candidate = Path(value).expanduser()
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    # Use the lexical path for descriptor traversal: no '..' and no followed links.
+    try:
+        relative = candidate.relative_to(Path(os.path.abspath(DATA_DIR)))
+    except ValueError:
+        try:
+            relative = candidate.relative_to(root)
+        except ValueError:
+            raise ValueError("原图必须保存在数据目录的专用图片文件夹") from None
+    parts = relative.parts
+    if len(parts) < 2 or parts[0] not in IMAGE_DIRECTORIES or ".." in parts:
+        raise ValueError("原图必须保存在数据目录的专用图片文件夹")
+    descriptors = []
+    try:
+        descriptors.append(os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW))
+        for part in parts[:-1]:
+            descriptors.append(os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                                       dir_fd=descriptors[-1]))
+        fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                     dir_fd=descriptors[-1])
+        descriptors.append(fd)
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_IMAGE_BYTES:
+            raise ValueError("原图必须是小于 20 MB 的普通图片文件")
+        with os.fdopen(os.dup(fd), "rb") as image:
+            payload = image.read(MAX_IMAGE_BYTES + 1)
+        if len(payload) > MAX_IMAGE_BYTES:
+            raise ValueError("原图超过 20 MB")
+        return payload, image_content_type(payload)
+    except OSError:
+        # Do not disclose server paths through HTTP errors.
+        raise ValueError("原图不可读取，或包含不允许的符号链接") from None
+    finally:
+        for fd in reversed(descriptors):
+            os.close(fd)
+
+
+def card_image_bytes(conn: sqlite3.Connection, card_id: str) -> tuple[bytes, str]:
     row = conn.execute("SELECT image_path FROM mistake_cards WHERE id = ?", (card_id,)).fetchone()
-    if not row or not str(row["image_path"] or "").strip():
-        raise FileNotFoundError("这道题没有原图")
-    path = Path(str(row["image_path"])).expanduser()
-    if not path.is_file():
-        raise FileNotFoundError("原图文件不存在")
-    content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-    if not content_type.startswith("image/"):
-        raise ValueError("原图不是支持的图片格式")
-    return path, content_type
+    return read_allowed_image(str(row["image_path"] or "") if row else "")
 
 
 def auth_page_shell(title: str, body: str) -> str:
@@ -2307,8 +2368,8 @@ class AppHandler(BaseHTTPRequestHandler):
             elif re.fullmatch(r"/api/cards/[^/]+/image", parsed.path):
                 card_id = unquote(parsed.path.split("/")[3])
                 with connect_db() as conn:
-                    image_file, content_type = card_image_file(conn, card_id)
-                self.send_inline_bytes(image_file.read_bytes(), content_type)
+                    image_bytes, content_type = card_image_bytes(conn, card_id)
+                self.send_inline_bytes(image_bytes, content_type)
             elif parsed.path == "/api/stats":
                 with connect_db() as conn:
                     cards = list_cards(conn, params)
@@ -2694,6 +2755,8 @@ class AppHandler(BaseHTTPRequestHandler):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -2718,6 +2781,8 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{quote(filename)}")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)
@@ -2726,13 +2791,18 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Disposition", "inline")
-        self.send_header("Cache-Control", "private, max-age=60")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)
 
     def log_message(self, fmt: str, *args) -> None:
-        print(f"{self.address_string()} - {fmt % args}")
+        # Request lines, query strings, IPs and exception details can contain private data.
+        # Keep only a validated HTTP status for local operational diagnostics.
+        status = str(args[1]) if fmt == '"%s" %s %s' and len(args) > 1 else ""
+        if re.fullmatch(r"[1-5][0-9]{2}", status):
+            print(f"HTTP {status}")
 
 
 INDEX_HTML = r"""<!doctype html>
@@ -3552,7 +3622,7 @@ INDEX_HTML = r"""<!doctype html>
           </div>
           <div class="export-box">
             <h3>备份与恢复</h3>
-            <p class="meta">备份会保存错题、复习答案和学习结果；恢复时会合并回现在的记录。</p>
+            <p class="meta">完整私人备份包含题目、作答、原始记录、会话标识和本机路径，未脱敏。仅供本人保存和恢复，请勿上传 GitHub 或公开分享；图片文件需另行保管。恢复时会合并记录。</p>
             <div class="inline-actions">
               <button class="btn" id="downloadBackup">下载备份</button>
               <button class="btn secondary" id="chooseRestore">恢复备份</button>
@@ -5536,6 +5606,7 @@ INDEX_HTML = r"""<!doctype html>
     }
 
     function downloadBackup() {
+      if (!window.confirm('将下载未脱敏的完整私人备份，可能含姓名、题目、会话和本机路径。请仅保存到私人位置，不要公开上传。确认下载？')) return;
       window.location.href = '/api/backup';
     }
 
