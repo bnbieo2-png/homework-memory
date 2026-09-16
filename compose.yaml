@@ -1,0 +1,24 @@
+services:
+  homework-notebook:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      HOMEWORK_NOTEBOOK_DATA_DIR: /data
+      HOMEWORK_NOTEBOOK_PORT: "18765"
+    ports:
+      - "127.0.0.1:18765:18765"
+    volumes:
+      - homework-notebook-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    user: "10001:10001"
+
+volumes:
+  homework-notebook-data:
